@@ -1,0 +1,133 @@
+Here are four prompts for GPT-6 Luna. Replace `TXX` with the task id, for example `T05`. Start a fresh opencode session for each task and each retry: Luna does better with a small context, and `AGENTS.md` is loaded automatically every time.
+
+### 1. Main prompt (first attempt at any task)
+
+```
+You are implementing task TXX of the SRE harness kit in this repository.
+
+Rules: follow AGENTS.md exactly. Edit ONLY the module file(s) listed in docs/tasks/TXX.md.
+Never edit tests/, verify/, docs/ (except docs/QUESTIONS.md), runtime/, scripts/,
+models.py, ports.py or context.py. Never rename a function, parameter, constant or
+dataclass field. Never run git commit, push, checkout or reset.
+
+Do these steps in order:
+
+1. Read docs/tasks/TXX.md.
+2. Open each module it lists. Write a numbered plan: every function that still raises
+   NotImplementedError, in the order of the card's "Steps" section.
+3. Open the test file the card lists. For each function in your plan, find the tests
+   that use it and note the exact expected values.
+4. Implement ONE function at a time:
+   a. Read its docstring again. Follow its numbered steps. Copy every string, key and
+      command argument exactly as written in the docstring and tests.
+   b. Replace only the `raise NotImplementedError(...)` line. Keep the signature as is.
+   c. Run its tests: python -m pytest <test file from the card> -x -k <function or test name>
+   d. If a test fails, read the assert line, compare expected and actual, fix, rerun.
+      Do not move to the next function until these tests pass.
+5. When every function is done, run: python verify/verify.py --task TXX
+6. If it prints FAIL, fix only the FIRST failing gate (see the guide below), then rerun step 5.
+7. Stop when it prints "RESULT: TXX PASS". Do not start another task.
+
+Gate guide:
+- Gate 1 (protected files): you changed a file you must not touch. Stop and report the file.
+- Gate 3 (NotImplementedError left): finish that function.
+- Gate 4 (contracts): the message shows the required parameters. Restore them exactly.
+- Gate 5 (forbidden patterns): remove the pattern on the named line. Run commands only
+  through the `runner` argument, in the module the message names.
+- Gate 6 (ruff): run `ruff check src --fix`, then fix what remains by hand.
+- Gate 7 (mypy): fix the type on the named line. Do not add `# type: ignore`.
+- Gate 8 (tests): run the first failing test alone:
+  python -m pytest <test id> -x --tb=long   and compare expected with actual.
+
+If the same gate fails 3 times, add the entry described in AGENTS.md to
+docs/QUESTIONS.md and stop.
+
+End with this report and nothing else:
+TASK: TXX
+RESULT: <the RESULT line from the verifier>
+FILES CHANGED: <list>
+NOTES: <one line, or "none">
+```
+
+### 2. Retry prompt (after a FAIL, in a new session)
+
+```
+Task TXX is not finished. The last verifier report is in verify/last_report.txt.
+
+Rules: follow AGENTS.md exactly. Edit ONLY the module file(s) listed in docs/tasks/TXX.md.
+Never edit tests, the verifier, docs (except docs/QUESTIONS.md) or provided files.
+
+1. Read AGENTS.md, docs/tasks/TXX.md and verify/last_report.txt.
+2. Find the FIRST gate marked FAIL. Fix only that gate, using the guide below.
+3. Run: python verify/verify.py --task TXX
+4. Repeat steps 2-3 until it prints "RESULT: TXX PASS". If the same gate fails
+   3 times, add the entry described in AGENTS.md to docs/QUESTIONS.md and stop.
+
+Gate guide:
+- Gate 1: you changed a protected file. Stop and report the file.
+- Gate 3: finish the function that still raises NotImplementedError.
+- Gate 4: restore the exact parameters shown in the message.
+- Gate 5: remove the forbidden pattern on the named line.
+- Gate 6: run `ruff check src --fix`, then fix what remains by hand.
+- Gate 7: fix the type on the named line. No `# type: ignore`.
+- Gate 8: run the first failing test alone with `python -m pytest <test id> -x --tb=long`.
+
+End with this report and nothing else:
+TASK: TXX
+RESULT: <the RESULT line from the verifier>
+FILES CHANGED: <list>
+NOTES: <one line, or "none">
+```
+
+### 3. T14 in four sessions
+
+T14 (playbooks) is too big for one Luna session. Run these four parts in order, one new session each. Only part D runs the verifier, because the other parts leave stubs behind on purpose.
+
+```
+You are implementing PART <A|B|C|D> of task T14 in src/sre_harness/playbooks.py.
+Follow AGENTS.md exactly. Edit ONLY src/sre_harness/playbooks.py.
+Read docs/tasks/T14.md first. Implement only the functions listed for your part,
+one at a time. After each one, run its tests with the command for your part.
+Leave every other function as it is.
+
+PART A, helpers:
+  tail, edit_requirements, upgrade_command, apply_upgrade, build_and_test,
+  forbidden_files, pr_body, final_base_image, package_query, parse_package_query, head_tree
+  Test: python -m pytest tests/test_t14_playbooks.py -x -k "tail or edit_requirements or upgrade_command_table or forbidden_files_helper or pr_body_shape or final_base_image or package_queries"
+
+PART B, dispatcher and recommendations:
+  run_playbook, recommend
+  Test: python -m pytest tests/test_t14_playbooks.py -x -k "dispatch or no_fix or unmapped or unauth or sa_key or iac or lookup_error"
+
+PART C, dependency fix:
+  run_app_dependency
+  Test: python -m pytest tests/test_t14_playbooks.py -x -k "app_dependency or unsupported or pr_cap or existing_pr or build_ or agent_error or upgrade_command_fails or lockfile or forbidden_files_and or empty_diff or git_failure"
+
+PART D, base image fix, then the full gate:
+  run_base_image_os
+  Test: python -m pytest tests/test_t14_playbooks.py -x -k "base_image"
+  Then run: python verify/verify.py --task T14   and fix gates until it prints "RESULT: T14 PASS".
+
+Stop when your part's tests pass (part D: when the verifier passes).
+End with: PART, FUNCTIONS DONE, TEST RESULT, NOTES (one line).
+```
+
+### 4. Hint prompt (when it's stuck and you know the fix)
+
+```
+Task TXX, gate <N> fails on <test name or message>.
+Hint: <one or two sentences, e.g. "the details dict must use sorted() on the key list"
+      or "call gitops.remove_worktree in a finally block">.
+Follow AGENTS.md. Change only <function name> in src/sre_harness/<module>.py.
+Then run: python verify/verify.py --task TXX   and stop when it prints PASS
+or after 3 failed attempts.
+```
+
+**How to use them:** save them in a folder outside the protected paths, for example `prompts/`. Then for one task:
+
+```
+opencode run --model github-copilot/gpt-6-luna --agent build "$(sed 's/TXX/T05/g' prompts/task.md)"
+python verify/verify.py --task T05 && git add src docs && git commit -m "T05: verified"
+```
+
+`scripts/run_task.sh` already has shorter built-in versions of prompts 1 and 2. To make it use these instead, replace its two `PROMPT=` lines. The scripts are protected, so run `scripts/rebaseline.sh` after editing them.
